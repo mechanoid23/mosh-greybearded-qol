@@ -201,6 +201,30 @@ export async function startCharacterCreation(actor) {
     await completeStep(actor, "selectedAttributes");
   }
 
+  // ✅ Step 5b: Roll Potential for psionic classes (Psychic / Emissary)
+  if (!checkStep(actor, "rolledPotential")) {
+    const psionicClassNames = ["Psychic", "Emissary"];
+    if (selectedClass && psionicClassNames.includes(selectedClass.name)) {
+      const roll = new Roll("2d10 + 10");
+      await roll.evaluate();
+      const total = roll.total;
+
+      await actor.update({
+        "system.stats.potential.value": total,
+        "system.stats.potential.max": total
+      });
+
+      await chatOutput({
+        actor,
+        title: "Potential Rolled",
+        subtitle: actor.name,
+        icon: "fa-brain",
+        blocks: [{ type: "counter", value: total, label: "Potential" }]
+      });
+    }
+    await completeStep(actor, "rolledPotential");
+  }
+
   // ✅ Step 6: Roll Health
   if (!checkStep(actor, "rolledHealth")) {
     const formula = `1d10 + 10`;
