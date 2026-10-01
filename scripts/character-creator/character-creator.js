@@ -225,54 +225,56 @@ export async function startCharacterCreation(actor) {
     await completeStep(actor, "rolledPotential");
   }
 
-  // ✅ Step 5c: Choose Psionic Ability for psionic classes (Psychic / Emissary)
+  // ✅ Step 5c: Roll Psionic Abilities for psionic classes (Psychic / Emissary)
   if (!checkStep(actor, "selectedPsionicAbility")) {
     const psionicClassNames = ["Psychic", "Emissary"];
     if (selectedClass && psionicClassNames.includes(selectedClass.name)) {
-      const psionicOptions = [
-        { id: "NbrnTP3fAbnFbmOH", name: "Astral Projection" },
-        { id: "Nwwmq6OLkTkx9NIQ", name: "Clairvoyance Roll" },
-        { id: "9G81aSQHqNgAC72q", name: "Energy Healing" },
-        { id: "AnHTmt9OBGhnuKon", name: "Illusions" },
-        { id: "p5B1Id9Z850kEnyd", name: "Mind Control" },
-        { id: "zKG5mSoyPstUeC99", name: "Photokinesis" },
-        { id: "AraVNqTIAae24HZK", name: "Pyrokinesis" },
-        { id: "nYCsXoblu17rNy8H", name: "Telekinesis" },
-        { id: "yshA6P3MsHarAJOC", name: "Telepathy" },
-        { id: "k7Gdp0CXP9K63LSF", name: "Teleportation" }
+      const PSIONIC_DISCIPLINES = [
+        { name: "Astral Projection", chain: ["NbrnTP3fAbnFbmOH","nKYaXRvj7uff0LYT","H8xIZM1JRcoreogr"] },
+        { name: "Clairvoyance Roll", chain: ["Nwwmq6OLkTkx9NIQ","0Wobtqn62tOy4Cqp","IqK3yn9FfcgMXAdx"] },
+        { name: "Energy Healing",    chain: ["9G81aSQHqNgAC72q","Fl41sNLjVHWGaub5","2Ztd26fEeVVhDIq2"] },
+        { name: "Illusions",         chain: ["AnHTmt9OBGhnuKon","eNo41eoPni6JDWYl","gAACTP9gyv1plBAr"] },
+        { name: "Mind Control",      chain: ["p5B1Id9Z850kEnyd","x9qWCA79ISjs8JHU","dKF0j7elKPoh3pKM"] },
+        { name: "Photokinesis",      chain: ["zKG5mSoyPstUeC99","enq522wjZRL9OaYs","P6ihgIqLSmNqE40f"] },
+        { name: "Pyrokinesis",       chain: ["AraVNqTIAae24HZK","jht3X13npgW2zMj5","18Y2bTu5X1YqWg21"] },
+        { name: "Telekinesis",       chain: ["nYCsXoblu17rNy8H","6h8l7qgATtLFxJpR","a5HSUPwePut0Sstz"] },
+        { name: "Telepathy",         chain: ["yshA6P3MsHarAJOC","BnD3XkfFNuYUPnmb","pD0ezNmREpOaUVgA"] },
+        { name: "Teleportation",     chain: ["k7Gdp0CXP9K63LSF","ZH3UDqpNVGMrerqt","HioRRdzHzmA4KR1V"] },
       ];
 
-      const optionsHtml = psionicOptions
-        .map(o => `<option value="${o.id}">${o.name}</option>`)
-        .join("");
+      const potential = actor.system.stats.potential?.value ?? 0;
+      const numRolls = selectedClass.name === "Psychic" ? Math.floor(potential / 10) : 1;
 
-      const flavor = selectedClass.name === "Emissary"
-        ? "manifests as alien technology"
-        : "manifests through the force of your mind";
+      const abilityPack = game.packs.get("fvtt_mosh_1e_rwc.items_skills_1e");
+      await abilityPack.getIndex();
+      const rtPack = game.packs.get("fvtt_mosh_1e_rwc.rolltables_1e");
+      const psionicTable = await rtPack.getDocument("xavU07zUHLnnBbuQ");
 
-      const chosen = await foundry.applications.api.DialogV2.prompt({
-        window: { title: "Choose Psionic Path" },
-        content: `<p>Choose your starting Psionic Path (Tier I ability granted — ${flavor}):</p>
-                  <select name="psionicAbility" style="width:100%;margin-top:6px">${optionsHtml}</select>`,
-        ok: {
-          label: "Choose",
-          callback: (_event, button) => button.form.elements.psionicAbility.value
-        }
-      });
+      const granted = [];
+      for (let i = 0; i < numRolls; i++) {
+        const drawn = await psionicTable.draw({ displayChat: true });
+        const result = drawn.results[0];
+        const disc = PSIONIC_DISCIPLINES.find(d => d.chain[0] === result.documentId);
+        if (!disc) continue;
+        const current = actor.items.find(item => item.type === "ability" && item.name.startsWith(disc.name + " "));
+        let grantId, toDelete = [];
+        if (!current)                          { grantId = disc.chain[0]; }
+        else if (current.name.endsWith(" I"))  { toDelete = [current.id]; grantId = disc.chain[1]; }
+        else if (current.name.endsWith(" II")) { toDelete = [current.id]; grantId = disc.chain[2]; }
+        else { console.log(`[QoL] ${disc.name} already at Master`); continue; }
+        if (toDelete.length) await actor.deleteEmbeddedDocuments("Item", toDelete);
+        const doc = await abilityPack.getDocument(grantId);
+        await actor.createEmbeddedDocuments("Item", [doc.toObject()]);
+        granted.push(doc.name);
+      }
 
-      if (!chosen) return;
-
-      const rwcPack = game.packs.get("fvtt_mosh_1e_rwc.items_skills_1e");
-      await rwcPack.getIndex();
-      const abilityDoc = await rwcPack.getDocument(chosen);
-      if (abilityDoc) {
-        await actor.createEmbeddedDocuments("Item", [abilityDoc.toObject()]);
+      if (granted.length) {
         await chatOutput({
           actor,
-          title: "Psionic Ability Granted",
+          title: "Psionic Abilities Granted",
           subtitle: actor.name,
           icon: "fa-brain",
-          blocks: [{ type: "highlight", label: "Psionic Path", value: abilityDoc.name }]
+          blocks: [{ type: "itemList", items: granted.map(n => ({ name: n })), nowrap: true }]
         });
       }
     }
