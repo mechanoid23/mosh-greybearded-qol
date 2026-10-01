@@ -225,6 +225,60 @@ export async function startCharacterCreation(actor) {
     await completeStep(actor, "rolledPotential");
   }
 
+  // ✅ Step 5c: Choose Psionic Ability for psionic classes (Psychic / Emissary)
+  if (!checkStep(actor, "selectedPsionicAbility")) {
+    const psionicClassNames = ["Psychic", "Emissary"];
+    if (selectedClass && psionicClassNames.includes(selectedClass.name)) {
+      const psionicOptions = [
+        { id: "NbrnTP3fAbnFbmOH", name: "Astral Projection" },
+        { id: "Nwwmq6OLkTkx9NIQ", name: "Clairvoyance Roll" },
+        { id: "9G81aSQHqNgAC72q", name: "Energy Healing" },
+        { id: "AnHTmt9OBGhnuKon", name: "Illusions" },
+        { id: "p5B1Id9Z850kEnyd", name: "Mind Control" },
+        { id: "zKG5mSoyPstUeC99", name: "Photokinesis" },
+        { id: "AraVNqTIAae24HZK", name: "Pyrokinesis" },
+        { id: "nYCsXoblu17rNy8H", name: "Telekinesis" },
+        { id: "yshA6P3MsHarAJOC", name: "Telepathy" },
+        { id: "k7Gdp0CXP9K63LSF", name: "Teleportation" }
+      ];
+
+      const optionsHtml = psionicOptions
+        .map(o => `<option value="${o.id}">${o.name}</option>`)
+        .join("");
+
+      const flavor = selectedClass.name === "Emissary"
+        ? "manifests as alien technology"
+        : "manifests through the force of your mind";
+
+      const chosen = await foundry.applications.api.DialogV2.prompt({
+        window: { title: "Choose Psionic Path" },
+        content: `<p>Choose your starting Psionic Path (Tier I ability granted — ${flavor}):</p>
+                  <select name="psionicAbility" style="width:100%;margin-top:6px">${optionsHtml}</select>`,
+        ok: {
+          label: "Choose",
+          callback: (_event, button) => button.form.elements.psionicAbility.value
+        }
+      });
+
+      if (!chosen) return;
+
+      const rwcPack = game.packs.get("fvtt_mosh_1e_rwc.items_skills_1e");
+      await rwcPack.getIndex();
+      const abilityDoc = await rwcPack.getDocument(chosen);
+      if (abilityDoc) {
+        await actor.createEmbeddedDocuments("Item", [abilityDoc.toObject()]);
+        await chatOutput({
+          actor,
+          title: "Psionic Ability Granted",
+          subtitle: actor.name,
+          icon: "fa-brain",
+          blocks: [{ type: "highlight", label: "Psionic Path", value: abilityDoc.name }]
+        });
+      }
+    }
+    await completeStep(actor, "selectedPsionicAbility");
+  }
+
   // ✅ Step 6: Roll Health
   if (!checkStep(actor, "rolledHealth")) {
     const formula = `1d10 + 10`;
